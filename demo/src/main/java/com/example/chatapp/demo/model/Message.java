@@ -1,55 +1,39 @@
 package com.example.chatapp.demo.model;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Data;
-
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
-@Data
 @Table(name = "message")
-
+@Data
 public class Message {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-
-
     private Long id;
-    @JsonAlias({"from_user_id","to_user_id"})
 
-    private Long fromUserId, toUserId;
+    private Long fromUserId;
+    private Long toUserId;
     private String content;
-//    private Instant timestamp;
 
-    public Message() {
+    @Column(updatable = false)
+    private LocalDateTime sentAt;
+
+    @PrePersist
+    protected void onCreate() {
+        this.sentAt = LocalDateTime.now();
     }
 
-    public Message(Long f, Long t, String c) {
-        this.fromUserId = f;
-        this.toUserId = t;
+    private LocalDateTime deliveredAt;
+    private LocalDateTime readAt;
+
+    public Message() {}
+
+    public Message(Long from, Long to, String c) {
+        this.fromUserId = from;
+        this.toUserId = to;
         this.content = c;
-//        this.timestamp = Instant.now();
+        this.sentAt = LocalDateTime.now();
     }
-
-    public Long getId() {
-        return id;
-    }
-
-    public Long getFromUserId() {
-        return fromUserId;
-    }
-
-    public Long getToUserId() {
-        return toUserId;
-    }
-
-    public String getContent() {
-        return content;
-    }
-
-//    public Instant getTimestamp() {
-//        return timestamp;
-//    }
 }
