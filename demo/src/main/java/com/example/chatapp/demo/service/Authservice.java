@@ -21,15 +21,39 @@ public class Authservice {
     public User register(String username, String email, String password,
                          String fullName, String bio, String phone, String avatarUrl) {
 
-        // 🔍 Check if email already exists
-        if (userRepository.findByEmail(email).isPresent()) {
-            throw new RuntimeException("User already exists");
+        // === VALIDATIONS (centralized here) ===
+
+        if (username == null || username.isBlank()) {
+            throw new RuntimeException("Username is required");
         }
 
-        // 🔐 Encrypt password
+        if (email == null || email.isBlank()) {
+            throw new RuntimeException("Email is required");
+        }
+
+        if (!email.contains("@") || !email.contains(".")) {
+            throw new RuntimeException("Invalid email format");
+        }
+
+        if (password == null || password.isBlank()) {
+            throw new RuntimeException("Password is required");
+        }
+
+        if (password.length() < 6) {
+            throw new RuntimeException("Weak password");
+        }
+
+        if (userRepository.existsByEmail(email)) {
+            throw new RuntimeException("Email already registered");
+        }
+
+        if (userRepository.existsByUsername(username)) {
+            throw new RuntimeException("Username already exists");
+        }
+
+        // Encrypt password
         String encryptedPassword = encoder.encode(password);
 
-        // 🔹 Create user object
         User user = new User();
         user.setUsername(username);
         user.setEmail(email);
@@ -41,6 +65,7 @@ public class Authservice {
 
         return userRepository.save(user);
     }
+
 
     public boolean login(String username, String rawPassword) {
         Optional<User> userOpt = userRepository.findByUsername(username);

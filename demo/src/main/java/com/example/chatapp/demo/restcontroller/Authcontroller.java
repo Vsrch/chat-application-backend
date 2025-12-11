@@ -4,7 +4,9 @@ import com.example.chatapp.demo.model.User;
 import com.example.chatapp.demo.repository.UserRepository;
 import com.example.chatapp.demo.service.Authservice;
 import com.example.chatapp.demo.service.UserDeletionService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,7 +28,7 @@ public class Authcontroller {
 
     // ------------------ REGISTER ------------------
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> register(@Valid @RequestBody Map<String, Object> body) {
         try {
             String username = (String) body.get("username");
             String email = (String) body.get("email");
@@ -52,7 +54,7 @@ public class Authcontroller {
             }
 
 // Invalid email format
-            if (!email.contains("@") || !email.contains(".")) {
+            if (!email.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,6}$")) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid email format"));
             }
 
@@ -90,7 +92,7 @@ public class Authcontroller {
 
         } catch (Exception e) {
             e.printStackTrace(); // <-- IMPORTANT for debugging
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(400).body(Map.of("error", e.getMessage()));
         }
 
 
@@ -99,30 +101,27 @@ public class Authcontroller {
 
     // ------------------ LOGIN ------------------
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> login(@RequestBody LoginRequestdto loginRequest) {
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            loginRequest.getUsername(),
+                            loginRequest.getPassword()
+                    )
+            );
 
-        String email = body.get("email") != null ? body.get("email").toString() : null;
-        String username = body.get("username") != null ? body.get("username").toString() : null;
-        String password = body.get("password") != null ? body.get("password").toString() : null;
+            final UserDetails userDetails =
+                    customUserDetailsService.loadUserByUsername(loginRequest.getUsername());
 
-        // Missing fields
-        if ((email == null && username == null)) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Email or Username is required"));
+            final String token = jwtUtil.generateToken(userDetails.getUsername());
+
+            return ResponseEntity.ok(new AuthenticationResponse(token));
+
+        } catch (Exception ex) {
+            return ResponseEntity.status(401).body(
+                    Map.of("error", "Invalid username or password")
+            );
         }
-        if (password == null || password.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Password required"));
-        }
-
-        // Flexible login
-        String input = email != null ? email : username;
-
-        boolean success = authService.loginFlexible(input, password);
-
-        if (!success) {
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
-        }
-
-        return ResponseEntity.ok(Map.of("message", "Login successful"));
     }
 
 
@@ -155,4 +154,3 @@ public class Authcontroller {
     }
 
 }
-
