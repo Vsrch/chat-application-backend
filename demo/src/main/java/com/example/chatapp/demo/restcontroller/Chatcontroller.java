@@ -5,6 +5,7 @@ import com.example.chatapp.demo.service.Chatservice;
 import com.example.chatapp.demo.service.FriendService;
 import com.example.chatapp.demo.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -29,49 +30,56 @@ public class Chatcontroller {
     @PostMapping("/send")
     public ResponseEntity<?> sendMessage(@RequestBody Map<String, Object> body) {
 
-        // --- Validate fields exist ---
-        if (!body.containsKey("fromUserId") || !body.containsKey("toUserId") || !body.containsKey("content")) {
-            return ResponseEntity.badRequest().body(Map.of("error", "fromUserId, toUserId, and content are required"));
+        // 1️⃣ Get logged-in username from JWT
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        // Load sender user
+        var sender = userRepository.findByUsername(username)
+                .orElse(null);
+
+        if (sender == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid JWT user"));
         }
 
-        Long fromUserId;
+        Long fromUserId = sender.getId();
+
+        // 2️⃣ Validate receiverId
+        if (!body.containsKey("toUserId") || !body.containsKey("content")) {
+            return ResponseEntity.badRequest().body(Map.of("error", "toUserId and content are required"));
+        }
+
         Long toUserId;
 
         try {
-            fromUserId = Long.parseLong(body.get("fromUserId").toString());
             toUserId = Long.parseLong(body.get("toUserId").toString());
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "User IDs must be numbers"));
+            return ResponseEntity.badRequest().body(Map.of("error", "toUserId must be a number"));
         }
 
+        // 3️⃣ Validate content
         String content = body.get("content").toString().trim();
-
-        // --- Validate user existence ---
-        if (!userRepository.existsById(fromUserId) || !userRepository.existsById(toUserId)) {
-            return ResponseEntity.status(404).body(Map.of("error", "Sender or receiver does not exist"));
-        }
-
-        // --- Validate sender != receiver ---
-        if (fromUserId.equals(toUserId)) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Cannot send a message to yourself"));
-        }
-
-        // --- Validate message not empty ---
         if (content.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Message cannot be empty"));
         }
-
-        // --- Validate max message length ---
         if (content.length() > 500) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Message too long (max 500 characters allowed)"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Message too long"));
         }
 
-        // --- Validate friendship ---
+        // 4️⃣ Validate users exist
+        if (!userRepository.existsById(toUserId)) {
+            return ResponseEntity.status(404).body(Map.of("error", "Receiver does not exist"));
+        }
+
+        if (fromUserId.equals(toUserId)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Cannot message yourself"));
+        }
+
+        // 5️⃣ Validate friendship
         if (!friendService.areFriends(fromUserId, toUserId)) {
             return ResponseEntity.status(403).body(Map.of("error", "You can send messages only to accepted friends"));
         }
 
-        // --- SAVE MESSAGE ---
+        // 6️⃣ SAVE MESSAGE
         Message msg = chatService.send(new Message(fromUserId, toUserId, content));
 
         return ResponseEntity.ok(Map.of(
@@ -79,6 +87,7 @@ public class Chatcontroller {
                 "data", msg
         ));
     }
+
 
     // ---------------------- INBOX ----------------------
     @GetMapping("/messages/{userId}")

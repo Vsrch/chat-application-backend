@@ -3,6 +3,7 @@ package com.example.chatapp.demo.service;
 import com.example.chatapp.demo.model.User;
 import com.example.chatapp.demo.repository.UserRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -11,9 +12,9 @@ import java.util.Optional;
 public class Authservice {
 
     private final UserRepository userRepository;
-    private final BCryptPasswordEncoder encoder;
+    private final PasswordEncoder encoder;
 
-    public Authservice(UserRepository userRepository, BCryptPasswordEncoder encoder) {
+    public Authservice(UserRepository userRepository, PasswordEncoder encoder) {
         this.userRepository = userRepository;
         this.encoder = encoder;
     }

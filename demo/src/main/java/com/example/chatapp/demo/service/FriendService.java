@@ -20,69 +20,60 @@ public class FriendService {
         this.userRepository = userRepository;
     }
 
-    // ---------------- SEND FRIEND REQUEST ----------------
+    // in FriendService
     public Friend sendRequest(Long senderId, Long receiverId) {
+        if (senderId == null || receiverId == null) throw new IllegalArgumentException("userId and friendId required");
+        if (senderId.equals(receiverId)) throw new IllegalArgumentException("Cannot send request to yourself");
+        if (!userRepository.existsById(senderId)) throw new IllegalArgumentException("Sender not found");
+        if (!userRepository.existsById(receiverId)) throw new IllegalArgumentException("Receiver not found");
 
-        if (senderId == null || receiverId == null) {
-            throw new IllegalArgumentException("userId and friendId are required.");
-        }
-
-        // Prevent sending to self
-        if (senderId.equals(receiverId)) {
-            throw new IllegalArgumentException("You cannot send a friend request to yourself.");
-        }
-
-        // Validate that both users exist
-        if (!userRepository.existsById(senderId)) {
-            throw new IllegalArgumentException("Sender user does not exist: " + senderId);
-        }
-        if (!userRepository.existsById(receiverId)) {
-            throw new IllegalArgumentException("Receiver user does not exist: " + receiverId);
-        }
-
-        // 🔍 Check if already exists (pending/accepted/rejected)
         Optional<Friend> existing = friendRepository.findExistingFriend(senderId, receiverId);
         if (existing.isPresent()) {
-            throw new IllegalArgumentException("Friend request already exists or users are already friends.");
+            throw new IllegalArgumentException("Friend request exists or already friends");
         }
 
-        Friend request = new Friend();
-        request.setSenderId(senderId);
-        request.setReceiverId(receiverId);
-        request.setStatus(Friend.Status.PENDING);
-
-        return friendRepository.save(request);
+        Friend f = new Friend();
+        f.setSenderId(senderId);
+        f.setReceiverId(receiverId);
+        f.setStatus(Friend.Status.PENDING);
+        return friendRepository.save(f);
     }
 
 
-    // ---------------- UPDATE STATUS ----------------
-    public Optional<Friend> updateStatus(Long requestId, Friend.Status status) {
+    public Optional<Friend> updateStatus(Long requestId, Friend.Status status, Long currentUserId) {
         return friendRepository.findById(requestId).map(req -> {
+            if (!req.getReceiverId().equals(currentUserId)) {
+                throw new IllegalArgumentException("Only receiver can accept/reject");
+            }
             req.setStatus(status);
             return friendRepository.save(req);
         });
     }
 
 
-    // ---------------- GET ACCEPTED FRIENDS ----------------
     public List<Friend> getFriends(Long userId) {
         return friendRepository.findFriends(userId);
     }
 
-    // ---------------- PENDING REQUEST LIST ----------------
     public List<Friend> getPendingRequests(Long userId) {
         return friendRepository.findByReceiverIdAndStatus(userId, Friend.Status.PENDING);
     }
 
-    // ---------------- CHECK IF TWO USERS ARE FRIENDS ----------------
-    public boolean areFriends(Long user1, Long user2) {
-        return friendRepository.findExistingFriend(user1, user2)
-                .map(f -> f.getStatus() == Friend.Status.ACCEPTED)
-                .orElse(false);
+    // FINAL DELETE LOGIC
+    public void removeFriendship(Long userId, Long friendId) {
+
+        Optional<Friend> relation = friendRepository.findExistingFriend(userId, friendId);
+
+        if (relation.isEmpty()) {
+            throw new RuntimeException("No friendship found between users.");
+        }
+
+        friendRepository.delete(relation.get());
+    }
+    public boolean areFriends(Long userId, Long friendId) {
+        return friendRepository.existsBySenderIdAndReceiverIdAndStatus(userId, friendId, Friend.Status.ACCEPTED)
+                || friendRepository.existsBySenderIdAndReceiverIdAndStatus(friendId, userId, Friend.Status.ACCEPTED);
     }
 
-    // ---------------- DELETE FRIEND ----------------
-    public void deleteFriend(Long id) {
-        friendRepository.deleteById(id);
-    }
+
 }

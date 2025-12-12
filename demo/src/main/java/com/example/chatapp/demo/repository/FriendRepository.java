@@ -22,6 +22,7 @@ public interface FriendRepository extends JpaRepository<Friend, Long> {
     void deleteBySenderIdOrReceiverId(Long senderId, Long receiverId);
     void deleteBySenderId(Long senderId);
     void deleteByReceiverId(Long receiverId);
+    boolean existsBySenderIdAndReceiverIdAndStatus(Long senderId, Long receiverId, Friend.Status status);
 
 
 }
