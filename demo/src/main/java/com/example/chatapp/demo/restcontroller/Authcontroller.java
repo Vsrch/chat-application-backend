@@ -1,10 +1,22 @@
 package com.example.chatapp.demo.restcontroller;
 
+import com.example.chatapp.demo.dto.LoginRequestdto;
+import com.example.chatapp.demo.dto.RegisterRequestdto;
+import com.example.chatapp.demo.dto.AuthenticationResponse;
 import com.example.chatapp.demo.model.User;
 import com.example.chatapp.demo.repository.UserRepository;
+import com.example.chatapp.demo.security.JwtUtil;
 import com.example.chatapp.demo.service.Authservice;
+import com.example.chatapp.demo.service.CustomUserDetailsService;
 import com.example.chatapp.demo.service.UserDeletionService;
+
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -14,67 +26,66 @@ import java.util.Map;
 @RequestMapping("/auth")
 public class Authcontroller {
 
-    private final Authservice authService;
-    private final UserRepository userRepository;
-    private final UserDeletionService userDeletionService;
+    @Autowired
+    private Authservice authService;
 
-    public Authcontroller(Authservice authService, UserRepository userRepository,UserDeletionService userDeletionService) {
-        this.authService = authService;
-        this.userRepository = userRepository;
-        this.userDeletionService = userDeletionService;
-    }
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private UserDeletionService userDeletionService;
+
+    @Autowired
+    private AuthenticationManager authenticationManager;
+
+    @Autowired
+    private CustomUserDetailsService customUserDetailsService;
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
 
     // ------------------ REGISTER ------------------
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestdto request) {
+
         try {
-            String username = (String) body.get("username");
-            String email = (String) body.get("email");
-            String password = (String) body.get("password");
+            String username = request.getUsername();
+            String email = request.getEmail();
+            String password = request.getPassword();
 
-            // New profile fields
-            String fullName = (String) body.get("fullName");
-            String bio = (String) body.get("bio");
-            String phone = (String) body.get("phone");
-            String avatarUrl = (String) body.get("avatarUrl");
+            String fullName = request.getFullName();
+            String bio = request.getBio();
+            String phone = request.getPhone();
+            String avatarUrl = request.getAvatarUrl();
 
-            // ------------------ VALIDATIONS ------------------
-
-// Missing fields
-            if (username == null || username.isBlank()) {
+            // Validation
+            if (username == null || username.isBlank())
                 return ResponseEntity.badRequest().body(Map.of("error", "Username is required"));
-            }
-            if (email == null || email.isBlank()) {
+
+            if (email == null || email.isBlank())
                 return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
-            }
-            if (password == null || password.isBlank()) {
+
+            if (password == null || password.isBlank())
                 return ResponseEntity.badRequest().body(Map.of("error", "Password is required"));
-            }
 
-// Invalid email format
-            if (!email.contains("@") || !email.contains(".")) {
+            if (!email.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,6}$"))
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid email format"));
-            }
 
-// Weak password
-            if (password.length() < 6) {
+            if (password.length() < 6)
                 return ResponseEntity.badRequest().body(Map.of("error", "Weak password"));
-            }
 
-// Duplicate email
-            if (userRepository.existsByEmail(email)) {
+            if (userRepository.existsByEmail(email))
                 return ResponseEntity.badRequest().body(Map.of("error", "Email already registered"));
-            }
 
-// Duplicate username
-            if (userRepository.existsByUsername(username)) {
+            if (userRepository.existsByUsername(username))
                 return ResponseEntity.badRequest().body(Map.of("error", "Username already exists"));
-            }
 
+            // DO NOT ENCODE PASSWORD HERE (Authservice does it)
             User saved = authService.register(
                     username,
                     email,
-                    password,
+                    password,   // raw password
                     fullName,
                     bio,
                     phone,
@@ -89,40 +100,41 @@ public class Authcontroller {
             );
 
         } catch (Exception e) {
-            e.printStackTrace(); // <-- IMPORTANT for debugging
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            e.printStackTrace();
+            return ResponseEntity.status(400).body(Map.of("error", e.getMessage()));
         }
-
-
     }
 
 
-    // ------------------ LOGIN ------------------
+    // ------------------ LOGIN (JWT) - username OR email ------------------
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> login(@RequestBody LoginRequestdto loginRequest) {
 
-        String email = body.get("email") != null ? body.get("email").toString() : null;
-        String username = body.get("username") != null ? body.get("username").toString() : null;
-        String password = body.get("password") != null ? body.get("password").toString() : null;
-
-        // Missing fields
-        if ((email == null && username == null)) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Email or Username is required"));
-        }
-        if (password == null || password.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Password required"));
+        // Pick username if provided, else fall back to email
+        String loginId = loginRequest.getUsername();
+        if (loginId == null || loginId.isBlank()) {
+            loginId = loginRequest.getEmail();
         }
 
-        // Flexible login
-        String input = email != null ? email : username;
-
-        boolean success = authService.loginFlexible(input, password);
-
-        if (!success) {
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
+        if (loginId == null || loginId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Username or Email is required"));
         }
 
-        return ResponseEntity.ok(Map.of("message", "Login successful"));
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            loginId,
+                            loginRequest.getPassword()
+                    )
+            );
+        } catch (BadCredentialsException ex) {
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid username/email or password"));
+        }
+
+        UserDetails userDetails = customUserDetailsService.loadUserByUsername(loginId);
+        String token = jwtUtil.generateToken(userDetails.getUsername());
+
+        return ResponseEntity.ok(new AuthenticationResponse(token));
     }
 
 
@@ -131,6 +143,7 @@ public class Authcontroller {
     public List<User> getAllUsers() {
         return userRepository.findAll();
     }
+
 
     // ------------------ DELETE USER ------------------
     @DeleteMapping("/delete/{id}")
@@ -146,13 +159,10 @@ public class Authcontroller {
                     "message", "User deleted successfully",
                     "userId", id
             ));
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             return ResponseEntity.status(500).body(
                     Map.of("error", "Failed to delete user: " + ex.getMessage())
             );
         }
     }
-
 }
-

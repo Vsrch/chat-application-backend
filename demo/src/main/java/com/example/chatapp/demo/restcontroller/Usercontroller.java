@@ -27,8 +27,8 @@ public class Usercontroller {
     }
 
     // ---------------- UPDATE PROFILE ----------------
-    @PutMapping("/{id}")
-    public ResponseEntity<?> updateProfile(
+    @PutMapping("/update/{id}")
+    public ResponseEntity<?> updateUser(
             @PathVariable Long id,
             @RequestBody Map<String, Object> body
     ) {
@@ -46,14 +46,18 @@ public class Usercontroller {
             if (body.containsKey("avatarUrl"))
                 user.setAvatarUrl(body.get("avatarUrl").toString());
 
-            User saved = userRepository.save(user);
+            userRepository.save(user);
 
-            return ResponseEntity.ok(
-                    Map.of("message", "Profile updated successfully", "user", saved)
-            );
+            return ResponseEntity.ok(Map.of(
+                    "message", "User updated successfully",
+                    "user", user
+            ));
 
-        }).orElse(ResponseEntity.status(404).body(Map.of("error", "User not found")));
+        }).orElse(ResponseEntity.status(404).body(
+                Map.of("error", "User not found")
+        ));
     }
+
     // ---------------- DELETE USER ----------------
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteUser(@PathVariable Long id) {
